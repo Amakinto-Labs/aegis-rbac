@@ -3,7 +3,7 @@
  * Pattern: platform_admin > tenant_admin > staff > member
  * Use case: Multi-tenant platforms where users see different data based on role
  */
-import { defineDataScope, defineRoles } from "../src";
+import { defineDataScope, defineRoles } from "rbac";
 
 export const rbacConfig = defineRoles({
 	roles: {

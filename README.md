@@ -44,7 +44,7 @@ export const rbacConfig = defineRoles({
 ### 2. Check permissions
 
 ```ts
-import { can, authorize } from "rbac";
+import { can, authorize, getPermissions } from "rbac";
 
 can(rbacConfig, "admin", "members:invite"); // true
 can(rbacConfig, "viewer", "members:invite"); // false
@@ -52,6 +52,10 @@ can(rbacConfig, "viewer", "members:invite"); // false
 // Throws if denied
 authorize(rbacConfig, "viewer", "members:invite");
 // Error: Forbidden: role "viewer" cannot "invite" on "members"
+
+// Introspect what a role can do
+getPermissions(rbacConfig, "admin");
+// ["workspace:update", "members:invite", "members:remove", "brands:*", "workspace:read", "brands:read"]
 ```
 
 ### 3. Hono middleware
@@ -70,6 +74,29 @@ app.delete("/workspace", requireRole("owner"), handler);
 
 // Multiple permissions (all must pass)
 app.get("/reports", requirePermission("brands:read", "analytics:read"), handler);
+
+// Access the CASL ability in downstream handlers
+app.get("/brands", requirePermission("brands:read"), (c) => {
+  const ability = c.get("ability");
+  const canEdit = ability.can("write", "brands");
+  // ...
+});
+```
+
+### 4. Framework-agnostic guard
+
+Use `createGuard` with Express, Fastify, Elysia, or any framework:
+
+```ts
+import { createGuard } from "rbac";
+
+const guard = createGuard(rbacConfig);
+
+const { allowed, ability } = guard.checkPermission("admin", "brands:write");
+if (!allowed) throw new Error("Forbidden");
+
+// Role checks respect hierarchy
+guard.checkRole("owner", "admin"); // { allowed: true } — owner is above admin
 ```
 
 ## Permission format
@@ -83,7 +110,7 @@ app.get("/reports", requirePermission("brands:read", "analytics:read"), handler)
 
 ## Hierarchy
 
-Roles inherit all permissions from roles below them:
+Roles inherit all permissions from roles below them. When hierarchy is provided, all defined roles must be included.
 
 ```ts
 hierarchy: ["owner", "admin", "manager", "analyst"]
@@ -93,6 +120,8 @@ hierarchy: ["owner", "admin", "manager", "analyst"]
 //                                       ↑ no inheritance
 ```
 
+`requireRole` also respects hierarchy — `requireRole("admin")` allows `owner` through.
+
 ## Super admin
 
 A role marked as `superAdmin` bypasses all permission and role checks:
@@ -101,6 +130,34 @@ A role marked as `superAdmin` bypasses all permission and role checks:
 defineRoles({
   roles: { ... },
   superAdmin: "owner", // owner can do everything
+});
+```
+
+## Deny rules
+
+Explicitly deny permissions, even if granted by wildcard or inheritance:
+
+```ts
+defineRoles({
+  roles: {
+    admin: {
+      permissions: ["brands:*"],
+      deny: ["brands:delete"], // admin can manage brands, but not delete
+    },
+  },
+});
+```
+
+Deny rules are scoped to the role that defines them — they do not propagate up the hierarchy. Super admin ignores deny rules.
+
+## Custom error responses
+
+```ts
+createRBACMiddleware({
+  config: rbacConfig,
+  getRole: (c) => c.get("workspaceRole"),
+  onUnauthorized: (c) => c.json({ message: "Login required" }, 401),
+  onForbidden: (c) => c.json({ message: "Access denied" }, 403),
 });
 ```
 
@@ -120,6 +177,9 @@ const scopes = defineDataScope({
   }),
 });
 
+// Optional: validate scope roles match your RBAC config
+const scopes = defineDataScope(scopeConfig, { rbacConfig });
+
 const scope = await resolveScope(scopes, {
   userId: "user-123",
   tenantId: "tenant-456",
@@ -128,14 +188,20 @@ const scope = await resolveScope(scopes, {
 // { type: "staff", groupIds: ["group-1", "group-2"] }
 ```
 
+`resolveScope` throws if no resolver matches. Pass `{ defaultScope }` to opt into a fallback.
+
 ## Validation
 
 `defineRoles()` validates your config at startup:
 
 - Permission format (`resource:action`, `resource:*`, `*`)
-- Hierarchy roles must exist in `roles`
+- Deny permission format (same rules)
+- Hierarchy must include all defined roles (no partial hierarchies)
+- No duplicate roles in hierarchy
 - `superAdmin` must exist in `roles`
 - At least one role required
+
+`parsePermission()` also validates at runtime — malformed permission strings throw immediately.
 
 ## API
 
@@ -144,10 +210,13 @@ const scope = await resolveScope(scopes, {
 | `defineRoles(config)` | Define and validate RBAC config |
 | `can(config, role, permission)` | Check permission (returns boolean) |
 | `authorize(config, role, permission)` | Assert permission (throws on deny) |
-| `buildAbility(config, role)` | Get CASL ability for advanced use |
+| `getPermissions(config, role)` | List effective permissions for a role |
+| `buildAbility(config, role)` | Get cached CASL ability for advanced use |
 | `parsePermission(permission)` | Parse permission string to action/subject |
-| `defineDataScope(config)` | Define data scope resolvers |
-| `resolveScope(config, ctx)` | Resolve scope for a user |
+| `isRoleAtOrAbove(config, userRole, requiredRole)` | Check role hierarchy position |
+| `createGuard(config)` | Framework-agnostic guard (checkPermission, checkRole) |
+| `defineDataScope(config, options?)` | Define data scope resolvers |
+| `resolveScope(config, ctx, options?)` | Resolve scope for a user |
 | `createRBACMiddleware(options)` | Create Hono middleware |
 
 ## Examples

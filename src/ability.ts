@@ -8,7 +8,7 @@ const abilityCache = new WeakMap<RBACConfig, Map<string, MongoAbility<AbilityTup
 /**
  * Collect all permissions for a role, including inherited permissions from hierarchy.
  */
-function collectPermissions<TRole extends string>(
+export function collectPermissions<TRole extends string>(
 	config: RBACConfig<TRole>,
 	role: TRole,
 ): string[] {

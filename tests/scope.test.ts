@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { defineRoles } from "../src/define";
 import { defineDataScope, resolveScope } from "../src/scope";
 
 type Scope =
@@ -81,5 +82,46 @@ describe("resolveScope", () => {
 			role: "admin",
 		});
 		expect(scope).toEqual({ type: "admin", tenantId: undefined });
+	});
+});
+
+describe("defineDataScope with rbacConfig validation", () => {
+	const rbacConfig = defineRoles({
+		roles: {
+			admin: { permissions: ["*"] },
+			viewer: { permissions: ["workspace:read"] },
+		},
+	});
+
+	test("accepts scope with valid roles", () => {
+		expect(() =>
+			defineDataScope(
+				{
+					admin: () => ({ type: "admin" }),
+					viewer: () => ({ type: "viewer" }),
+				},
+				{ rbacConfig },
+			),
+		).not.toThrow();
+	});
+
+	test("throws when scope defines resolver for unknown role", () => {
+		expect(() =>
+			defineDataScope(
+				{
+					admin: () => ({ type: "admin" }),
+					manager: () => ({ type: "manager" }),
+				} as any,
+				{ rbacConfig },
+			),
+		).toThrow('Scope defines resolver for unknown role "manager"');
+	});
+
+	test("works without rbacConfig (no validation)", () => {
+		expect(() =>
+			defineDataScope({
+				anything: () => ({ type: "anything" }),
+			}),
+		).not.toThrow();
 	});
 });

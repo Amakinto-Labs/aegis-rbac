@@ -1,7 +1,14 @@
-import type { DataScopeConfig, ResolveScopeOptions, ScopeContext, ScopeResolver } from "./types";
+import type {
+	DataScopeConfig,
+	RBACConfig,
+	ResolveScopeOptions,
+	ScopeContext,
+	ScopeResolver,
+} from "./types";
 
 /**
  * Define data scope resolvers for each role.
+ * Optionally validates that scope roles match an RBAC config.
  * Used by projects that need row-level data filtering based on user relationships.
  *
  * @example
@@ -12,16 +19,27 @@ import type { DataScopeConfig, ResolveScopeOptions, ScopeContext, ScopeResolver 
  *     type: "staff",
  *     groupIds: await getStaffGroups(ctx.userId),
  *   }),
- *   member: async (ctx) => ({
- *     type: "member",
- *     linkedIds: await getMemberLinks(ctx.userId, ctx.tenantId),
- *   }),
  * });
+ *
+ * // With RBAC config validation:
+ * const scopes = defineDataScope(scopeConfig, { rbacConfig });
  * ```
  */
 export function defineDataScope<TRole extends string, TScope>(
 	config: DataScopeConfig<TRole, TScope>,
+	options?: { rbacConfig: RBACConfig<TRole> },
 ): DataScopeConfig<TRole, TScope> {
+	if (options?.rbacConfig) {
+		const rbacRoles = Object.keys(options.rbacConfig.roles) as TRole[];
+		const scopeRoles = Object.keys(config) as TRole[];
+		for (const role of scopeRoles) {
+			if (!rbacRoles.includes(role)) {
+				throw new Error(
+					`Scope defines resolver for unknown role "${role}". Valid roles: ${rbacRoles.join(", ")}`,
+				);
+			}
+		}
+	}
 	return Object.freeze(config);
 }
 

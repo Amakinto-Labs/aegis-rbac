@@ -4,7 +4,7 @@ export { defineDataScope, resolveScope } from "./scope";
 
 // Core
 export { buildAbility } from "./ability";
-export { can, authorize } from "./check";
+export { can, authorize, getPermissions } from "./check";
 export { parsePermission } from "./permission";
 export { isRoleAtOrAbove } from "./hierarchy";
 export { createGuard } from "./guard";

@@ -1,4 +1,4 @@
-import { buildAbility } from "./ability";
+import { buildAbility, collectPermissions } from "./ability";
 import { parsePermission } from "./permission";
 import type { RBACConfig } from "./types";
 
@@ -39,4 +39,27 @@ export function authorize<TRole extends string>(
 		const { action, subject } = parsePermission(permission);
 		throw new Error(`Forbidden: role "${role}" cannot "${action}" on "${subject}"`);
 	}
+}
+
+/**
+ * Get all effective permissions for a role (deduplicated), including inherited ones.
+ * Useful for debugging, admin UIs, and displaying "what can this role do?".
+ *
+ * @example
+ * ```ts
+ * getPermissions(config, "admin");
+ * // ["workspace:update", "members:invite", "members:remove", "brands:*", "brands:read", "analytics:read"]
+ *
+ * getPermissions(config, "owner");
+ * // ["*"] (superAdmin)
+ * ```
+ */
+export function getPermissions<TRole extends string>(
+	config: RBACConfig<TRole>,
+	role: TRole,
+): string[] {
+	if (config.superAdmin && role === config.superAdmin) {
+		return ["*"];
+	}
+	return [...new Set(collectPermissions(config, role))];
 }

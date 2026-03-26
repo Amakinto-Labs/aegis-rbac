@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildAbility } from "../src/ability";
-import { authorize, can } from "../src/check";
+import { authorize, can, getPermissions } from "../src/check";
 import { defineRoles } from "../src/define";
 
 const config = defineRoles({
@@ -232,5 +232,31 @@ describe("deny rules", () => {
 		// manager still has campaigns and inherited analytics
 		expect(can(cfg, "manager", "campaigns:write")).toBe(true);
 		expect(can(cfg, "manager", "analytics:read")).toBe(true);
+	});
+});
+
+describe("getPermissions()", () => {
+	test("returns all effective permissions for a role", () => {
+		const perms = getPermissions(config, "analyst");
+		expect(perms).toEqual(["brands:read", "analytics:read"]);
+	});
+
+	test("includes inherited permissions", () => {
+		const perms = getPermissions(config, "manager");
+		expect(perms).toContain("brands:read");
+		expect(perms).toContain("campaigns:*");
+		expect(perms).toContain("analytics:read");
+	});
+
+	test("deduplicates inherited permissions", () => {
+		// manager has brands:read, analyst also has brands:read — should appear once
+		const perms = getPermissions(config, "manager");
+		const brandsReadCount = perms.filter((p) => p === "brands:read").length;
+		expect(brandsReadCount).toBe(1);
+	});
+
+	test("returns [*] for superAdmin", () => {
+		const perms = getPermissions(config, "owner");
+		expect(perms).toEqual(["*"]);
 	});
 });

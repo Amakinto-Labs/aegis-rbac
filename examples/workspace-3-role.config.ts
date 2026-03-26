@@ -3,7 +3,7 @@
  * Pattern: owner > editor > viewer
  * Use case: Collaborative tools with read/write/admin tiers
  */
-import { defineRoles } from "../src";
+import { defineRoles } from "rbac";
 
 export const rbacConfig = defineRoles({
 	roles: {
