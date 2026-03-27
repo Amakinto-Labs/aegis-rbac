@@ -3,12 +3,35 @@ import type { AbilityTuple, MongoAbility } from "@casl/ability";
 /** A permission string in "resource:action" format, or "*" for full access */
 export type Permission = string;
 
+/** Condition for a conditional permission — matched against the resource instance */
+export type PermissionCondition = Record<string, unknown>;
+
+/** A conditional permission: grants access only when the resource matches the condition */
+export interface ConditionalPermission {
+	/** Permission in "resource:action" format */
+	permission: Permission;
+	/** Condition object matched against the resource. Supports MongoDB-style queries via CASL. */
+	conditions: PermissionCondition;
+}
+
+/** A field-level permission: grants access to specific fields only */
+export interface FieldPermission {
+	/** Permission in "resource:action" format */
+	permission: Permission;
+	/** Fields the role can access on this resource */
+	fields: string[];
+}
+
 /** Configuration for a single role */
 export interface RoleConfig {
 	/** Permissions granted to this role in "resource:action" format */
 	permissions: Permission[];
 	/** Permissions explicitly denied, even if inherited or granted by wildcard */
 	deny?: Permission[];
+	/** Conditional permissions — access only when resource matches conditions */
+	when?: ConditionalPermission[];
+	/** Field-level permissions — restrict which fields are accessible */
+	fields?: FieldPermission[];
 }
 
 /** Full RBAC configuration for a project */

@@ -150,6 +150,61 @@ defineRoles({
 
 Deny rules are scoped to the role that defines them — they do not propagate up the hierarchy. Super admin ignores deny rules.
 
+## Conditional permissions
+
+Grant access only when the resource matches specific conditions (e.g., "edit own posts"):
+
+```ts
+defineRoles({
+  roles: {
+    editor: {
+      permissions: ["posts:read"],
+      when: [
+        {
+          permission: "posts:update",
+          conditions: { authorId: "{{userId}}" },
+        },
+      ],
+    },
+  },
+});
+```
+
+Check against a resource instance using CASL's `subject()`:
+
+```ts
+import { subject } from "@casl/ability";
+import { buildAbility } from "rbac";
+
+const ability = buildAbility(config, "editor");
+ability.can("update", subject("posts", { authorId: currentUserId })); // true if match
+ability.can("update", subject("posts", { authorId: "other-user" })); // false
+```
+
+Conditions use [CASL's MongoDB-style queries](https://casl.js.org/v6/en/guide/conditions-in-depth). Super admin bypasses conditions.
+
+## Field-level permissions
+
+Restrict which fields a role can access on a resource:
+
+```ts
+defineRoles({
+  roles: {
+    admin: {
+      permissions: ["users:read", "users:update"], // all fields
+    },
+    analyst: {
+      permissions: [],
+      fields: [
+        { permission: "users:read", fields: ["name", "email", "role"] },
+      ],
+    },
+  },
+});
+```
+
+Field restrictions are **optional** — if you don't define `fields`, the permission grants access to all fields. Use CASL's `permittedFieldsOf()` to retrieve allowed fields in your application layer.
+
 ## Custom error responses
 
 ```ts
@@ -190,12 +245,34 @@ const scope = await resolveScope(scopes, {
 
 `resolveScope` throws if no resolver matches. Pass `{ defaultScope }` to opt into a fallback.
 
+## Debugging
+
+Understand why a permission check passed or failed:
+
+```ts
+import { debugCan, debugRole } from "rbac";
+
+const result = debugCan(config, "viewer", "brands:write");
+// {
+//   role: "viewer",
+//   permission: "brands:write",
+//   allowed: false,
+//   traces: [{ allowed: false, reason: 'Role "viewer" does not have "brands:write" or a covering wildcard' }],
+//   effectivePermissions: ["workspace:read", "brands:read"]
+// }
+
+const roleResult = debugRole(config, "viewer", "admin");
+// { allowed: false, reason: 'Denied: "viewer" is below "admin" in hierarchy' }
+```
+
 ## Validation
 
 `defineRoles()` validates your config at startup:
 
 - Permission format (`resource:action`, `resource:*`, `*`)
 - Deny permission format (same rules)
+- Conditional permissions must have non-empty conditions
+- Field permissions must have non-empty fields array
 - Hierarchy must include all defined roles (no partial hierarchies)
 - No duplicate roles in hierarchy
 - `superAdmin` must exist in `roles`
@@ -217,6 +294,8 @@ const scope = await resolveScope(scopes, {
 | `createGuard(config)` | Framework-agnostic guard (checkPermission, checkRole) |
 | `defineDataScope(config, options?)` | Define data scope resolvers |
 | `resolveScope(config, ctx, options?)` | Resolve scope for a user |
+| `debugCan(config, role, permission)` | Debug why a permission check passed/failed |
+| `debugRole(config, userRole, ...requiredRoles)` | Debug why a role check passed/failed |
 | `createRBACMiddleware(options)` | Create Hono middleware |
 
 ## Examples

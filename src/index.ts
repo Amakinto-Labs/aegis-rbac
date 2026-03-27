@@ -9,9 +9,15 @@ export { parsePermission } from "./permission";
 export { isRoleAtOrAbove } from "./hierarchy";
 export { createGuard } from "./guard";
 
+// Debug
+export { debugCan, debugRole } from "./debug";
+
 // Types
 export type {
 	Permission,
+	PermissionCondition,
+	ConditionalPermission,
+	FieldPermission,
 	RoleConfig,
 	RBACConfig,
 	ParsedPermission,
@@ -22,3 +28,4 @@ export type {
 	ResolveScopeOptions,
 	GuardResult,
 } from "./types";
+export type { DebugTrace, DebugResult, DebugRoleResult } from "./debug";

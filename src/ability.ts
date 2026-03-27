@@ -1,6 +1,11 @@
-import { type AbilityTuple, type MongoAbility, createMongoAbility } from "@casl/ability";
+import {
+	type AbilityTuple,
+	type MongoAbility,
+	type RawRuleOf,
+	createMongoAbility,
+} from "@casl/ability";
 import { parsePermission } from "./permission";
-import type { RBACConfig } from "./types";
+import type { ConditionalPermission, FieldPermission, RBACConfig } from "./types";
 
 /** Cache: WeakMap<config, Map<role, ability>> — auto-GCs when config is dereferenced */
 const abilityCache = new WeakMap<RBACConfig, Map<string, MongoAbility<AbilityTuple>>>();
@@ -35,6 +40,62 @@ export function collectPermissions<TRole extends string>(
 }
 
 /**
+ * Collect conditional permissions for a role, including inherited ones from hierarchy.
+ */
+function collectConditionalPermissions<TRole extends string>(
+	config: RBACConfig<TRole>,
+	role: TRole,
+): ConditionalPermission[] {
+	const roleConfig = config.roles[role];
+	if (!roleConfig) return [];
+
+	const conditionals = [...(roleConfig.when ?? [])];
+
+	if (config.hierarchy) {
+		const roleIndex = config.hierarchy.indexOf(role);
+		if (roleIndex !== -1) {
+			for (let i = roleIndex + 1; i < config.hierarchy.length; i++) {
+				const lowerRole = config.hierarchy[i];
+				const lowerConfig = config.roles[lowerRole];
+				if (lowerConfig?.when) {
+					conditionals.push(...lowerConfig.when);
+				}
+			}
+		}
+	}
+
+	return conditionals;
+}
+
+/**
+ * Collect field-level permissions for a role, including inherited ones from hierarchy.
+ */
+function collectFieldPermissions<TRole extends string>(
+	config: RBACConfig<TRole>,
+	role: TRole,
+): FieldPermission[] {
+	const roleConfig = config.roles[role];
+	if (!roleConfig) return [];
+
+	const fieldPerms = [...(roleConfig.fields ?? [])];
+
+	if (config.hierarchy) {
+		const roleIndex = config.hierarchy.indexOf(role);
+		if (roleIndex !== -1) {
+			for (let i = roleIndex + 1; i < config.hierarchy.length; i++) {
+				const lowerRole = config.hierarchy[i];
+				const lowerConfig = config.roles[lowerRole];
+				if (lowerConfig?.fields) {
+					fieldPerms.push(...lowerConfig.fields);
+				}
+			}
+		}
+	}
+
+	return fieldPerms;
+}
+
+/**
  * Collect deny rules for a role. Deny rules are NOT inherited through hierarchy —
  * they only apply to the role that defines them.
  */
@@ -56,6 +117,12 @@ function collectDenyPermissions<TRole extends string>(
  * const ability = buildAbility(config, "admin");
  * ability.can("update", "workspace"); // true
  * ability.can("delete", "workspace"); // false
+ *
+ * // Conditional: check against a resource instance
+ * ability.can("update", subject("posts", { authorId: "user-123" }));
+ *
+ * // Field-level: check accessible fields
+ * ability.can("read", "users"); // true — but only for allowed fields
  * ```
  */
 export function buildAbility<TRole extends string>(
@@ -75,19 +142,37 @@ export function buildAbility<TRole extends string>(
 	if (config.superAdmin && role === config.superAdmin) {
 		ability = createMongoAbility([{ action: "manage", subject: "all" }]);
 	} else {
+		const rules: RawRuleOf<MongoAbility<AbilityTuple>>[] = [];
+
+		// Standard permissions
 		const permissions = collectPermissions(config, role);
-		const allowRules = permissions.map((p) => {
+		for (const p of permissions) {
 			const { action, subject } = parsePermission(p);
-			return { action, subject };
-		});
+			rules.push({ action, subject });
+		}
 
+		// Conditional permissions
+		const conditionals = collectConditionalPermissions(config, role);
+		for (const cp of conditionals) {
+			const { action, subject } = parsePermission(cp.permission);
+			rules.push({ action, subject, conditions: cp.conditions });
+		}
+
+		// Field-level permissions
+		const fieldPerms = collectFieldPermissions(config, role);
+		for (const fp of fieldPerms) {
+			const { action, subject } = parsePermission(fp.permission);
+			rules.push({ action, subject, fields: fp.fields });
+		}
+
+		// Deny rules
 		const denyPermissions = collectDenyPermissions(config, role);
-		const denyRules = denyPermissions.map((p) => {
+		for (const p of denyPermissions) {
 			const { action, subject } = parsePermission(p);
-			return { action, subject, inverted: true };
-		});
+			rules.push({ action, subject, inverted: true });
+		}
 
-		ability = createMongoAbility([...allowRules, ...denyRules]);
+		ability = createMongoAbility(rules);
 	}
 
 	// Store in cache

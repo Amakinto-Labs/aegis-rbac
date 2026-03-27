@@ -41,7 +41,7 @@ export function defineRoles<TRole extends string>(
 		throw new Error("RBAC config must define at least one role");
 	}
 
-	// Validate permissions format (both allow and deny)
+	// Validate permissions format (allow, deny, when, fields)
 	for (const role of roleNames) {
 		const roleConfig = config.roles[role];
 		for (const permission of roleConfig.permissions) {
@@ -56,6 +56,38 @@ export function defineRoles<TRole extends string>(
 				if (!isValidPermission(permission)) {
 					throw new Error(
 						`Invalid deny permission "${permission}" in role "${role}". Use "resource:action", "resource:*", or "*"`,
+					);
+				}
+			}
+		}
+		if (roleConfig.when) {
+			for (const cp of roleConfig.when) {
+				if (!isValidPermission(cp.permission)) {
+					throw new Error(
+						`Invalid conditional permission "${cp.permission}" in role "${role}". Use "resource:action", "resource:*", or "*"`,
+					);
+				}
+				if (
+					!cp.conditions ||
+					typeof cp.conditions !== "object" ||
+					Object.keys(cp.conditions).length === 0
+				) {
+					throw new Error(
+						`Conditional permission "${cp.permission}" in role "${role}" must have a non-empty conditions object`,
+					);
+				}
+			}
+		}
+		if (roleConfig.fields) {
+			for (const fp of roleConfig.fields) {
+				if (!isValidPermission(fp.permission)) {
+					throw new Error(
+						`Invalid field permission "${fp.permission}" in role "${role}". Use "resource:action", "resource:*", or "*"`,
+					);
+				}
+				if (!Array.isArray(fp.fields) || fp.fields.length === 0) {
+					throw new Error(
+						`Field permission "${fp.permission}" in role "${role}" must have a non-empty fields array`,
 					);
 				}
 			}
