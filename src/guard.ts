@@ -1,7 +1,7 @@
 import { buildAbility } from "./ability";
 import { isRoleAtOrAbove } from "./hierarchy";
 import { parsePermission } from "./permission";
-import type { GuardResult, RBACConfig } from "./types";
+import type { AbilityContext, GuardResult, RBACConfig } from "./types";
 
 /**
  * Create a framework-agnostic RBAC guard.
@@ -15,18 +15,42 @@ import type { GuardResult, RBACConfig } from "./types";
  * const { allowed, ability } = guard.checkPermission("admin", "brands:write");
  * if (!allowed) throw new Error("Forbidden");
  *
- * // Use ability for downstream conditional checks
- * if (ability.can("delete", "brands")) { ... }
+ * // With context for conditional permissions
+ * const { allowed } = guard.checkPermission("editor", { userId: "user-123" }, "posts:update");
  * ```
  */
 export function createGuard<TRole extends string>(config: RBACConfig<TRole>) {
 	return {
 		/**
 		 * Check if a role has all specified permissions.
-		 * Returns the result and the CASL ability for downstream use.
+		 * Throws if no permissions are provided.
+		 *
+		 * Overloads:
+		 * - checkPermission(role, ...permissions) — no context
+		 * - checkPermission(role, context, ...permissions) — with context for conditional perms
 		 */
-		checkPermission(role: TRole, ...permissions: string[]): GuardResult {
-			const ability = buildAbility(config, role);
+		checkPermission(
+			role: TRole,
+			contextOrPermission: AbilityContext | string,
+			...rest: string[]
+		): GuardResult {
+			let context: AbilityContext | undefined;
+			let permissions: string[];
+
+			if (typeof contextOrPermission === "string") {
+				permissions = [contextOrPermission, ...rest];
+			} else {
+				context = contextOrPermission;
+				permissions = rest;
+			}
+
+			if (permissions.length === 0) {
+				throw new Error(
+					"checkPermission requires at least one permission. An empty check would allow all roles through.",
+				);
+			}
+
+			const ability = buildAbility(config, role, context);
 			const allowed = permissions.every((p) => {
 				const { action, subject } = parsePermission(p);
 				return ability.can(action, subject);

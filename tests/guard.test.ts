@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { subject } from "@casl/ability";
 import { defineRoles } from "../src/define";
 import { createGuard } from "../src/guard";
 
@@ -6,9 +7,13 @@ const config = defineRoles({
 	roles: {
 		owner: { permissions: ["*"] },
 		admin: { permissions: ["workspace:update", "members:invite", "brands:*"] },
+		editor: {
+			permissions: ["posts:read"],
+			when: [{ permission: "posts:update", conditions: { authorId: "{{userId}}" } }],
+		},
 		viewer: { permissions: ["workspace:read", "brands:read"] },
 	},
-	hierarchy: ["owner", "admin", "viewer"],
+	hierarchy: ["owner", "admin", "editor", "viewer"],
 	superAdmin: "owner",
 });
 
@@ -35,6 +40,28 @@ describe("createGuard", () => {
 			const { ability } = guard.checkPermission("admin", "brands:read");
 			expect(ability.can("update", "workspace")).toBe(true);
 			expect(ability.can("delete", "workspace")).toBe(false);
+		});
+
+		test("throws on empty permissions", () => {
+			expect(() => guard.checkPermission("admin")).toThrow("requires at least one permission");
+		});
+	});
+
+	describe("checkPermission with context", () => {
+		test("resolves conditional permissions with context", () => {
+			const { allowed, ability } = guard.checkPermission(
+				"editor",
+				{ userId: "user-123" },
+				"posts:update",
+			);
+			expect(allowed).toBe(true);
+			expect(ability.can("update", subject("posts", { authorId: "user-123" }))).toBe(true);
+			expect(ability.can("update", subject("posts", { authorId: "other" }))).toBe(false);
+		});
+
+		test("context does not affect non-conditional permissions", () => {
+			const { allowed } = guard.checkPermission("admin", { userId: "user-123" }, "brands:read");
+			expect(allowed).toBe(true);
 		});
 	});
 

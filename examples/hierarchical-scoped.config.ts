@@ -52,6 +52,7 @@ export const rbacConfig = defineRoles({
 			],
 		},
 	},
+	hierarchy: ["platform_admin", "tenant_admin", "staff", "member"],
 	superAdmin: "platform_admin",
 });
 

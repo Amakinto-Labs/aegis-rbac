@@ -236,27 +236,50 @@ describe("deny rules", () => {
 });
 
 describe("getPermissions()", () => {
-	test("returns all effective permissions for a role", () => {
-		const perms = getPermissions(config, "analyst");
-		expect(perms).toEqual(["brands:read", "analytics:read"]);
+	test("returns full summary for a role", () => {
+		const summary = getPermissions(config, "analyst");
+		expect(summary.permissions).toEqual(["brands:read", "analytics:read"]);
+		expect(summary.conditionals).toEqual([]);
+		expect(summary.fields).toEqual([]);
+		expect(summary.denied).toEqual([]);
 	});
 
 	test("includes inherited permissions", () => {
-		const perms = getPermissions(config, "manager");
-		expect(perms).toContain("brands:read");
-		expect(perms).toContain("campaigns:*");
-		expect(perms).toContain("analytics:read");
+		const summary = getPermissions(config, "manager");
+		expect(summary.permissions).toContain("brands:read");
+		expect(summary.permissions).toContain("campaigns:*");
+		expect(summary.permissions).toContain("analytics:read");
 	});
 
 	test("deduplicates inherited permissions", () => {
-		// manager has brands:read, analyst also has brands:read — should appear once
-		const perms = getPermissions(config, "manager");
-		const brandsReadCount = perms.filter((p) => p === "brands:read").length;
+		const summary = getPermissions(config, "manager");
+		const brandsReadCount = summary.permissions.filter((p) => p === "brands:read").length;
 		expect(brandsReadCount).toBe(1);
 	});
 
 	test("returns [*] for superAdmin", () => {
-		const perms = getPermissions(config, "owner");
-		expect(perms).toEqual(["*"]);
+		const summary = getPermissions(config, "owner");
+		expect(summary.permissions).toEqual(["*"]);
+		expect(summary.conditionals).toEqual([]);
+	});
+
+	test("includes conditionals and fields in summary", () => {
+		const cfg = defineRoles({
+			roles: {
+				editor: {
+					permissions: ["posts:read"],
+					when: [{ permission: "posts:update", conditions: { authorId: "{{userId}}" } }],
+					fields: [{ permission: "posts:read", fields: ["title", "body"] }],
+					deny: ["posts:delete"],
+				},
+			},
+		});
+		const summary = getPermissions(cfg, "editor");
+		expect(summary.permissions).toEqual(["posts:read"]);
+		expect(summary.conditionals).toEqual([
+			{ permission: "posts:update", conditions: { authorId: "{{userId}}" } },
+		]);
+		expect(summary.fields).toEqual([{ permission: "posts:read", fields: ["title", "body"] }]);
+		expect(summary.denied).toEqual(["posts:delete"]);
 	});
 });

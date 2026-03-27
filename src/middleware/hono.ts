@@ -1,6 +1,13 @@
-import type { Context, Next } from "hono";
+import type { Context, Env, Next } from "hono";
 import { createGuard } from "../guard";
-import type { RBACConfig } from "../types";
+import type { AbilityContext, AppAbility, RBACConfig } from "../types";
+
+/** Hono env type that provides typed access to the ability on context */
+export interface AegisEnv extends Env {
+	Variables: {
+		ability: AppAbility;
+	};
+}
 
 /** Options for creating Hono RBAC middleware */
 export interface HonoRBACOptions<TRole extends string = string> {
@@ -8,6 +15,8 @@ export interface HonoRBACOptions<TRole extends string = string> {
 	config: RBACConfig<TRole>;
 	/** Extract the user's role from the Hono context */
 	getRole: (c: Context) => TRole | undefined;
+	/** Extract the ability context for resolving {{placeholder}} conditions. Optional. */
+	getContext?: (c: Context) => AbilityContext | undefined;
 	/** Custom handler for 401 Unauthorized. Defaults to JSON response. */
 	onUnauthorized?: (c: Context) => Response | Promise<Response>;
 	/** Custom handler for 403 Forbidden. Defaults to JSON response. */
@@ -22,14 +31,18 @@ export interface HonoRBACOptions<TRole extends string = string> {
  * const { requirePermission, requireRole } = createRBACMiddleware({
  *   config: rbacConfig,
  *   getRole: (c) => c.get("workspaceRole"),
+ *   getContext: (c) => ({ userId: c.get("userId") }),
  * });
  *
- * app.post("/brands", authMiddleware, requirePermission("brands:write"), handler);
- * app.delete("/workspace", authMiddleware, requireRole("owner"), handler);
+ * // Type-safe access to ability:
+ * const app = new Hono<AegisEnv>();
+ * app.get("/brands", requirePermission("brands:read"), (c) => {
+ *   const ability = c.get("ability"); // typed as AppAbility
+ * });
  * ```
  */
 export function createRBACMiddleware<TRole extends string>(options: HonoRBACOptions<TRole>) {
-	const { config, getRole } = options;
+	const { config, getRole, getContext } = options;
 	const guard = createGuard(config);
 
 	const handleUnauthorized =
@@ -41,15 +54,25 @@ export function createRBACMiddleware<TRole extends string>(options: HonoRBACOpti
 	 * Middleware that checks if the user has specific permissions.
 	 * Permission format: "resource:action" (e.g., "brands:write", "members:invite")
 	 * All permissions must pass (AND logic).
+	 * Throws at startup if called with no permissions.
 	 */
 	function requirePermission(...permissions: string[]) {
+		if (permissions.length === 0) {
+			throw new Error(
+				"requirePermission requires at least one permission. An empty check would allow all roles through.",
+			);
+		}
+
 		return async (c: Context, next: Next) => {
 			const role = getRole(c);
 			if (!role) {
 				return handleUnauthorized(c);
 			}
 
-			const { allowed, ability } = guard.checkPermission(role, ...permissions);
+			const context = getContext?.(c);
+			const { allowed, ability } = context
+				? guard.checkPermission(role, context, ...permissions)
+				: guard.checkPermission(role, ...permissions);
 			c.set("ability", ability);
 
 			if (!allowed) {
@@ -63,7 +86,6 @@ export function createRBACMiddleware<TRole extends string>(options: HonoRBACOpti
 	/**
 	 * Middleware that checks if the user has one of the specified roles.
 	 * Respects hierarchy — a higher role passes a check for a lower role.
-	 * Simpler than permission checking — use when you just need role gating.
 	 */
 	function requireRole(...allowedRoles: TRole[]) {
 		return async (c: Context, next: Next) => {

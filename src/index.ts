@@ -22,10 +22,12 @@ export type {
 	RBACConfig,
 	ParsedPermission,
 	AppAbility,
+	AbilityContext,
 	ScopeContext,
 	ScopeResolver,
 	DataScopeConfig,
 	ResolveScopeOptions,
 	GuardResult,
 } from "./types";
+export type { PermissionsSummary } from "./check";
 export type { DebugTrace, DebugResult, DebugRoleResult } from "./debug";

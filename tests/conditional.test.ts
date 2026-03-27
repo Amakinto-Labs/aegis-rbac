@@ -28,27 +28,54 @@ const config = defineRoles({
 	superAdmin: "owner",
 });
 
-describe("conditional permissions", () => {
+describe("conditional permissions with context", () => {
 	test("editor can read all posts unconditionally", () => {
 		expect(can(config, "editor", "posts:read")).toBe(true);
 	});
 
-	test("editor has conditional update permission (ability built)", () => {
-		const ability = buildAbility(config, "editor");
-		// With matching condition
-		expect(ability.can("update", subject("posts", { authorId: "{{userId}}" }))).toBe(true);
-		// Without matching condition
+	test("editor can update own posts when context resolves", () => {
+		const ability = buildAbility(config, "editor", { userId: "user-123" });
+		// Matches — authorId resolved to "user-123"
+		expect(ability.can("update", subject("posts", { authorId: "user-123" }))).toBe(true);
+		// Does not match — different user
 		expect(ability.can("update", subject("posts", { authorId: "other-user" }))).toBe(false);
 	});
 
-	test("viewer cannot update posts at all", () => {
-		const ability = buildAbility(config, "viewer");
-		expect(ability.can("update", subject("posts", { authorId: "{{userId}}" }))).toBe(false);
+	test("editor can delete own posts when context resolves", () => {
+		const ability = buildAbility(config, "editor", { userId: "user-456" });
+		expect(ability.can("delete", subject("posts", { authorId: "user-456" }))).toBe(true);
+		expect(ability.can("delete", subject("posts", { authorId: "other" }))).toBe(false);
+	});
+
+	test("can() with context resolves conditional permissions", () => {
+		// can() without context — conditional perm exists but placeholder is literal
+		expect(can(config, "editor", "posts:update")).toBe(true);
+		// can() with context — same behavior, resolved
+		expect(can(config, "editor", "posts:update", { userId: "user-123" })).toBe(true);
+	});
+
+	test("viewer cannot update posts even with context", () => {
+		const ability = buildAbility(config, "viewer", { userId: "user-123" });
+		expect(ability.can("update", subject("posts", { authorId: "user-123" }))).toBe(false);
 	});
 
 	test("superAdmin bypasses conditions", () => {
-		const ability = buildAbility(config, "owner");
+		const ability = buildAbility(config, "owner", { userId: "anyone" });
 		expect(ability.can("update", subject("posts", { authorId: "anyone" }))).toBe(true);
+		expect(ability.can("update", subject("posts", { authorId: "other" }))).toBe(true);
+	});
+
+	test("throws on missing placeholder key in context", () => {
+		expect(() => buildAbility(config, "editor", { tenantId: "t1" })).toThrow(
+			'placeholder "{{userId}}" not found in context',
+		);
+	});
+
+	test("without context, placeholders remain literal", () => {
+		const ability = buildAbility(config, "editor");
+		// Literal "{{userId}}" is the condition — only matches the literal string
+		expect(ability.can("update", subject("posts", { authorId: "{{userId}}" }))).toBe(true);
+		expect(ability.can("update", subject("posts", { authorId: "user-123" }))).toBe(false);
 	});
 });
 
@@ -60,7 +87,7 @@ describe("conditional permissions with hierarchy", () => {
 			},
 			editor: {
 				permissions: ["posts:read"],
-				when: [{ permission: "posts:update", conditions: { authorId: "user-1" } }],
+				when: [{ permission: "posts:update", conditions: { authorId: "{{userId}}" } }],
 			},
 			viewer: {
 				permissions: ["posts:read"],
@@ -69,10 +96,31 @@ describe("conditional permissions with hierarchy", () => {
 		hierarchy: ["admin", "editor", "viewer"],
 	});
 
-	test("admin inherits editor conditional permissions but also has full access", () => {
-		const ability = buildAbility(hierarchyConfig, "admin");
-		// admin has posts:* so can update any post
+	test("admin has full access via wildcard regardless of conditions", () => {
+		const ability = buildAbility(hierarchyConfig, "admin", { userId: "user-1" });
 		expect(ability.can("update", subject("posts", { authorId: "anyone" }))).toBe(true);
+	});
+});
+
+describe("placeholder resolution", () => {
+	test("throws on missing context key", () => {
+		expect(() => buildAbility(config, "editor", { tenantId: "t1" })).toThrow(
+			'placeholder "{{userId}}" not found in context',
+		);
+	});
+
+	test("non-placeholder strings pass through unchanged", () => {
+		const staticConfig = defineRoles({
+			roles: {
+				editor: {
+					permissions: ["posts:read"],
+					when: [{ permission: "posts:update", conditions: { status: "draft" } }],
+				},
+			},
+		});
+		const ability = buildAbility(staticConfig, "editor", { userId: "user-1" });
+		expect(ability.can("update", subject("posts", { status: "draft" }))).toBe(true);
+		expect(ability.can("update", subject("posts", { status: "published" }))).toBe(false);
 	});
 });
 

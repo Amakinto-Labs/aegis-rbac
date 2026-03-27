@@ -195,6 +195,44 @@ describe("custom error handlers", () => {
 	});
 });
 
+describe("empty requirePermission", () => {
+	test("throws at setup time when called with no permissions", () => {
+		expect(() => {
+			createRBACMiddleware({
+				config,
+				getRole: () => "admin",
+			}).requirePermission();
+		}).toThrow("requires at least one permission");
+	});
+});
+
+describe("middleware with getContext", () => {
+	test("resolves conditional permissions via getContext", async () => {
+		const conditionalConfig = defineRoles({
+			roles: {
+				editor: {
+					permissions: ["posts:read"],
+					when: [{ permission: "posts:update", conditions: { authorId: "{{userId}}" } }],
+				},
+			},
+		});
+		const app = new Hono();
+		app.use("*", async (c, next) => {
+			c.set("workspaceRole", "editor");
+			c.set("userId", "user-123");
+			await next();
+		});
+		const { requirePermission } = createRBACMiddleware({
+			config: conditionalConfig,
+			getRole: (c) => (c as any).get("workspaceRole"),
+			getContext: (c) => ({ userId: (c as any).get("userId") }),
+		});
+		app.put("/posts", requirePermission("posts:update"), (c) => c.json({ ok: true }));
+		const res = await app.request("/posts", { method: "PUT" });
+		expect(res.status).toBe(200);
+	});
+});
+
 describe("error response format", () => {
 	test("returns JSON error on 403", async () => {
 		const app = createApp("viewer");

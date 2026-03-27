@@ -1,4 +1,8 @@
-import { collectPermissions } from "./ability";
+import {
+	collectConditionalPermissions,
+	collectFieldPermissions,
+	collectPermissions,
+} from "./ability";
 import { isRoleAtOrAbove } from "./hierarchy";
 import { parsePermission } from "./permission";
 import type { RBACConfig } from "./types";
@@ -17,6 +21,8 @@ export interface DebugResult {
 	allowed: boolean;
 	traces: DebugTrace[];
 	effectivePermissions: string[];
+	conditionalPermissions: Array<{ permission: string; conditions: Record<string, unknown> }>;
+	fieldPermissions: Array<{ permission: string; fields: string[] }>;
 }
 
 /** Full debug result for a role check */
@@ -29,7 +35,7 @@ export interface DebugRoleResult {
 
 /**
  * Debug why a permission check passed or failed.
- * Returns a detailed trace of the decision process.
+ * Returns a detailed trace of the decision process, including conditional and field rules.
  *
  * @example
  * ```ts
@@ -38,10 +44,10 @@ export interface DebugRoleResult {
  * //   role: "viewer",
  * //   permission: "brands:write",
  * //   allowed: false,
- * //   traces: [
- * //     { permission: "brands:write", allowed: false, reason: 'Role "viewer" does not have "brands:write" or a covering wildcard' }
- * //   ],
- * //   effectivePermissions: ["workspace:read", "brands:read"]
+ * //   traces: [{ allowed: false, reason: '...' }],
+ * //   effectivePermissions: ["workspace:read", "brands:read"],
+ * //   conditionalPermissions: [],
+ * //   fieldPermissions: []
  * // }
  * ```
  */
@@ -52,6 +58,24 @@ export function debugCan<TRole extends string>(
 ): DebugResult {
 	const traces: DebugTrace[] = [];
 	const effectivePermissions = [...new Set(collectPermissions(config, role))];
+	const conditionalPermissions = collectConditionalPermissions(config, role).map((cp) => ({
+		permission: cp.permission,
+		conditions: cp.conditions,
+	}));
+	const fieldPermissions = collectFieldPermissions(config, role).map((fp) => ({
+		permission: fp.permission,
+		fields: fp.fields,
+	}));
+
+	const result = {
+		role,
+		permission,
+		allowed: false,
+		traces,
+		effectivePermissions,
+		conditionalPermissions,
+		fieldPermissions,
+	};
 
 	// Super admin bypass
 	if (config.superAdmin && role === config.superAdmin) {
@@ -60,7 +84,7 @@ export function debugCan<TRole extends string>(
 			allowed: true,
 			reason: `Role "${role}" is superAdmin — bypasses all checks`,
 		});
-		return { role, permission, allowed: true, traces, effectivePermissions: ["*"] };
+		return { ...result, allowed: true, effectivePermissions: ["*"] };
 	}
 
 	const { action, subject } = parsePermission(permission);
@@ -79,7 +103,7 @@ export function debugCan<TRole extends string>(
 					allowed: false,
 					reason: `Denied by explicit deny rule "${deny}" on role "${role}"`,
 				});
-				return { role, permission, allowed: false, traces, effectivePermissions };
+				return result;
 			}
 		}
 	}
@@ -91,9 +115,9 @@ export function debugCan<TRole extends string>(
 			traces.push({
 				permission,
 				allowed: true,
-				reason: `Granted by wildcard "*" permission`,
+				reason: 'Granted by wildcard "*" permission',
 			});
-			return { role, permission, allowed: true, traces, effectivePermissions };
+			return { ...result, allowed: true };
 		}
 		if (parsed.action === "manage" && parsed.subject === subject) {
 			traces.push({
@@ -101,7 +125,7 @@ export function debugCan<TRole extends string>(
 				allowed: true,
 				reason: `Granted by resource wildcard "${perm}"`,
 			});
-			return { role, permission, allowed: true, traces, effectivePermissions };
+			return { ...result, allowed: true };
 		}
 		if (parsed.action === action && parsed.subject === subject) {
 			const isOwn = roleConfig?.permissions.includes(perm);
@@ -112,7 +136,39 @@ export function debugCan<TRole extends string>(
 					? `Granted by direct permission "${perm}" on role "${role}"`
 					: `Granted by inherited permission "${perm}"`,
 			});
-			return { role, permission, allowed: true, traces, effectivePermissions };
+			return { ...result, allowed: true };
+		}
+	}
+
+	// Check conditional permissions
+	for (const cp of conditionalPermissions) {
+		const parsed = parsePermission(cp.permission);
+		if (
+			(parsed.action === action && parsed.subject === subject) ||
+			(parsed.action === "manage" && parsed.subject === subject)
+		) {
+			traces.push({
+				permission,
+				allowed: true,
+				reason: `Conditionally granted by "${cp.permission}" with conditions ${JSON.stringify(cp.conditions)}. Actual access depends on resource matching at runtime.`,
+			});
+			return { ...result, allowed: true };
+		}
+	}
+
+	// Check field-level permissions
+	for (const fp of fieldPermissions) {
+		const parsed = parsePermission(fp.permission);
+		if (
+			(parsed.action === action && parsed.subject === subject) ||
+			(parsed.action === "manage" && parsed.subject === subject)
+		) {
+			traces.push({
+				permission,
+				allowed: true,
+				reason: `Granted by field-level permission "${fp.permission}" (fields: ${fp.fields.join(", ")})`,
+			});
+			return { ...result, allowed: true };
 		}
 	}
 
@@ -123,7 +179,7 @@ export function debugCan<TRole extends string>(
 		reason: `Role "${role}" does not have "${permission}" or a covering wildcard`,
 	});
 
-	return { role, permission, allowed: false, traces, effectivePermissions };
+	return result;
 }
 
 /**
@@ -136,7 +192,7 @@ export function debugCan<TRole extends string>(
  * //   userRole: "viewer",
  * //   requiredRoles: ["admin"],
  * //   allowed: false,
- * //   reason: 'Role "viewer" is below "admin" in hierarchy'
+ * //   reason: 'Denied: "viewer" is below "admin" in hierarchy'
  * // }
  * ```
  */

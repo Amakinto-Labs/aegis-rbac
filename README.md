@@ -79,18 +79,19 @@ authorize(rbacConfig, "viewer", "members:invite");
 // Error: Forbidden: role "viewer" cannot "invite" on "members"
 
 // Introspect what a role can do
-getPermissions(rbacConfig, "admin");
-// ["workspace:update", "members:invite", "members:remove", "brands:*", "workspace:read", "brands:read"]
+const summary = getPermissions(rbacConfig, "admin");
+// { permissions: [...], conditionals: [...], fields: [...], denied: [...] }
 ```
 
 ### 3. Hono middleware
 
 ```ts
-import { createRBACMiddleware } from "aegis/middleware/hono";
+import { createRBACMiddleware, type AegisEnv } from "aegis/middleware/hono";
 
 const { requirePermission, requireRole } = createRBACMiddleware({
   config: rbacConfig,
   getRole: (c) => c.get("workspaceRole"),
+  getContext: (c) => ({ userId: c.get("userId") }), // optional — for conditional permissions
 });
 
 app.get("/brands", requirePermission("brands:read"), handler);
@@ -100,9 +101,10 @@ app.delete("/workspace", requireRole("owner"), handler);
 // Multiple permissions (all must pass)
 app.get("/reports", requirePermission("brands:read", "analytics:read"), handler);
 
-// Access the CASL ability in downstream handlers
+// Type-safe access to the CASL ability in downstream handlers
+const app = new Hono<AegisEnv>();
 app.get("/brands", requirePermission("brands:read"), (c) => {
-  const ability = c.get("ability");
+  const ability = c.get("ability"); // typed as AppAbility
   const canEdit = ability.can("write", "brands");
   // ...
 });
@@ -195,18 +197,22 @@ defineRoles({
 });
 ```
 
-Check against a resource instance using CASL's `subject()`:
+Pass a `context` to resolve `{{placeholder}}` values at runtime:
 
 ```ts
 import { subject } from "@casl/ability";
-import { buildAbility } from "aegis";
+import { buildAbility, can } from "aegis";
 
-const ability = buildAbility(config, "editor");
-ability.can("update", subject("posts", { authorId: currentUserId })); // true if match
+// Build ability with context — {{userId}} resolves to "user-123"
+const ability = buildAbility(config, "editor", { userId: "user-123" });
+ability.can("update", subject("posts", { authorId: "user-123" })); // true
 ability.can("update", subject("posts", { authorId: "other-user" })); // false
+
+// Or use the simpler can() with context
+can(config, "editor", "posts:update", { userId: "user-123" });
 ```
 
-Conditions use [CASL's MongoDB-style queries](https://casl.js.org/v6/en/guide/conditions-in-depth). Super admin bypasses conditions.
+Context flows through all APIs: `can()`, `authorize()`, `createGuard()`, and Hono middleware (via `getContext`). Super admin bypasses conditions.
 
 ## Field-level permissions
 

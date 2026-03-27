@@ -57,6 +57,50 @@ describe("debugCan", () => {
 		expect(result.allowed).toBe(true);
 		expect(result.effectivePermissions).toContain("workspace:read");
 	});
+
+	test("reports conditional permission match", () => {
+		const condConfig = defineRoles({
+			roles: {
+				editor: {
+					permissions: ["posts:read"],
+					when: [{ permission: "posts:update", conditions: { authorId: "{{userId}}" } }],
+				},
+			},
+		});
+		const result = debugCan(condConfig, "editor", "posts:update");
+		expect(result.allowed).toBe(true);
+		expect(result.traces[0].reason).toContain("Conditionally granted");
+		expect(result.conditionalPermissions).toHaveLength(1);
+	});
+
+	test("reports field-level permission match", () => {
+		const fieldConfig = defineRoles({
+			roles: {
+				analyst: {
+					permissions: [],
+					fields: [{ permission: "users:read", fields: ["name", "email"] }],
+				},
+			},
+		});
+		const result = debugCan(fieldConfig, "analyst", "users:read");
+		expect(result.allowed).toBe(true);
+		expect(result.traces[0].reason).toContain("field-level");
+		expect(result.fieldPermissions).toHaveLength(1);
+	});
+
+	test("reports missing permission when only conditional exists for different action", () => {
+		const condConfig = defineRoles({
+			roles: {
+				editor: {
+					permissions: ["posts:read"],
+					when: [{ permission: "posts:update", conditions: { authorId: "{{userId}}" } }],
+				},
+			},
+		});
+		const result = debugCan(condConfig, "editor", "posts:delete");
+		expect(result.allowed).toBe(false);
+		expect(result.traces[0].reason).toContain("does not have");
+	});
 });
 
 describe("debugRole", () => {

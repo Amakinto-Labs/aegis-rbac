@@ -81,6 +81,12 @@ export interface ResolveScopeOptions<TScope> {
 	defaultScope?: TScope;
 }
 
+/** Context for resolving {{placeholder}} values in conditional permissions */
+export interface AbilityContext {
+	userId?: string;
+	[key: string]: unknown;
+}
+
 /** Result from a framework-agnostic guard check */
 export interface GuardResult {
 	allowed: boolean;
