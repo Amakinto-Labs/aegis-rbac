@@ -121,4 +121,18 @@ export function validateConfig<TRole extends string>(config: RBACConfig<TRole>):
 	if (config.superAdmin && !config.roles[config.superAdmin]) {
 		throw new Error(`superAdmin references unknown role "${config.superAdmin}"`);
 	}
+
+	// Validate actionLevels
+	if (config.actionLevels) {
+		if (config.actionLevels.length < 2) {
+			throw new Error("actionLevels must define at least 2 levels");
+		}
+		const seen = new Set<string>();
+		for (const level of config.actionLevels) {
+			if (seen.has(level)) {
+				throw new Error(`Duplicate action level "${level}" in actionLevels`);
+			}
+			seen.add(level);
+		}
+	}
 }
