@@ -164,6 +164,36 @@ defineRoles({
 });
 ```
 
+## Action levels
+
+Define graduated permission levels where higher actions imply lower ones:
+
+```ts
+defineRoles({
+  actionLevels: ["read", "write", "delete"], // lowest → highest
+  roles: {
+    admin: { permissions: ["posts:delete"] },   // gets write + read
+    editor: { permissions: ["posts:write"] },    // gets read
+    viewer: { permissions: ["posts:read"] },     // just read
+  },
+});
+
+can(config, "editor", "posts:read");    // true — write implies read
+can(config, "editor", "posts:delete");  // false
+```
+
+Level names are project-defined — the engine doesn't care what they're called:
+
+```ts
+// Messaging with graduated access
+actionLevels: ["none", "reply_only", "full"]
+
+// Document permissions
+actionLevels: ["view", "comment", "edit", "admin"]
+```
+
+Actions not in `actionLevels` still work as exact matches. Wildcards (`resource:*`, `*`) bypass levels entirely. Deny rules also respect levels — denying `write` also denies `read`.
+
 ## Deny rules
 
 Explicitly deny permissions, even if granted by wildcard or inheritance:
@@ -356,6 +386,7 @@ const roleResult = debugRole(config, "viewer", "admin");
 - No duplicate roles in hierarchy
 - `superAdmin` must exist in `roles`
 - At least one role required
+- `actionLevels` must have at least 2 levels, no duplicates
 
 `parsePermission()` also validates at runtime — malformed permission strings throw immediately.
 
