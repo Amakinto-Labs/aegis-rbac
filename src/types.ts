@@ -93,3 +93,42 @@ export interface GuardResult {
 	allowed: boolean;
 	ability: AppAbility;
 }
+
+/** Override operations for a single role's permissions or deny rules */
+export interface PermissionOverride {
+	/** Permissions to add */
+	add?: Permission[];
+	/** Permissions to remove */
+	remove?: Permission[];
+}
+
+/** Override operations for a single role's conditional permissions */
+export interface ConditionalPermissionOverride {
+	/** Conditional permissions to add */
+	add?: ConditionalPermission[];
+	/** Remove conditional permissions matching these permission strings */
+	remove?: Permission[];
+}
+
+/** Override operations for a single role's field permissions */
+export interface FieldPermissionOverride {
+	/** Field permissions to add */
+	add?: FieldPermission[];
+	/** Remove field permissions matching these permission strings */
+	remove?: Permission[];
+}
+
+/** Override definition for a single role */
+export interface RoleOverride {
+	/** Add or remove granted permissions */
+	permissions?: PermissionOverride;
+	/** Add or remove deny rules */
+	deny?: PermissionOverride;
+	/** Add or remove conditional permissions */
+	when?: ConditionalPermissionOverride;
+	/** Add or remove field-level permissions */
+	fields?: FieldPermissionOverride;
+}
+
+/** Per-role overrides to apply on top of a base config */
+export type RBACOverrides<TRole extends string = string> = Partial<Record<TRole, RoleOverride>>;

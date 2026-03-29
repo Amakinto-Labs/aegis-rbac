@@ -1,5 +1,6 @@
 // Config
 export { defineRoles } from "./define";
+export { applyOverrides } from "./override";
 export { defineDataScope, resolveScope } from "./scope";
 
 // Core
@@ -28,6 +29,8 @@ export type {
 	DataScopeConfig,
 	ResolveScopeOptions,
 	GuardResult,
+	RoleOverride,
+	RBACOverrides,
 } from "./types";
 export type { PermissionsSummary } from "./check";
 export type { DebugTrace, DebugResult, DebugRoleResult } from "./debug";
