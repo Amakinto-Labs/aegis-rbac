@@ -277,6 +277,53 @@ const scope = await resolveScope(scopes, {
 
 `resolveScope` throws if no resolver matches. Pass `{ defaultScope }` to opt into a fallback.
 
+## Multi-tenant
+
+For SaaS apps where each tenant can customize permissions:
+
+```ts
+import { defineRoles, applyOverrides, createConfigCache, can } from "aegis";
+import { createRBACMiddleware } from "aegis/middleware/hono";
+
+// 1. Define base roles (shared across all tenants)
+const base = defineRoles({
+  roles: {
+    admin: { permissions: ["*"] },
+    editor: { permissions: ["posts:*", "comments:*"] },
+    viewer: { permissions: ["posts:read", "comments:read"] },
+  },
+  hierarchy: ["admin", "editor", "viewer"],
+  superAdmin: "admin",
+});
+
+// 2. Cache per-tenant configs with automatic override resolution
+const configs = createConfigCache({
+  base,
+  resolve: async (tenantId) => loadOverridesFromDB(tenantId),
+  ttl: 300, // optional: refresh every 5 minutes
+});
+
+// 3. Wire into middleware — resolve tenant + role per request
+app.use("/*", async (c, next) => {
+  const tenantId = c.get("tenantId");
+  const config = await configs.get(tenantId);
+  const { requirePermission } = createRBACMiddleware({
+    config,
+    getRole: (c) => c.get("userRole"),
+  });
+  return requirePermission("posts:read")(c, next);
+});
+
+// 4. Invalidate when a tenant updates their permissions
+app.put("/permissions", async (c) => {
+  const tenantId = c.get("tenantId");
+  await saveOverridesToDB(tenantId, body);
+  configs.invalidate(tenantId);
+});
+```
+
+`createConfigCache` handles caching and deduplication. Each tenant gets its own frozen config via `applyOverrides()`. The resolve function is only called on cache miss or TTL expiry.
+
 ## Debugging
 
 Understand why a permission check passed or failed:
@@ -324,6 +371,8 @@ const roleResult = debugRole(config, "viewer", "admin");
 | `parsePermission(permission)` | Parse permission string to action/subject |
 | `isRoleAtOrAbove(config, userRole, requiredRole)` | Check role hierarchy position |
 | `createGuard(config)` | Framework-agnostic guard (checkPermission, checkRole) |
+| `applyOverrides(config, overrides)` | Apply per-tenant permission overrides to a base config |
+| `createConfigCache(options)` | Cache per-tenant configs with TTL + invalidation |
 | `defineDataScope(config, options?)` | Define data scope resolvers |
 | `resolveScope(config, ctx, options?)` | Resolve scope for a user |
 | `debugCan(config, role, permission)` | Debug why a permission check passed/failed |
