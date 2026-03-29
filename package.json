@@ -3,21 +3,21 @@
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
+	"main": "src/index.ts",
+	"types": "src/index.ts",
 	"exports": {
 		".": {
-			"import": "./dist/index.js",
-			"types": "./dist/index.d.ts"
+			"import": "./src/index.ts",
+			"types": "./src/index.ts"
 		},
 		"./middleware/hono": {
-			"import": "./dist/middleware/hono.js",
-			"types": "./dist/middleware/hono.d.ts"
+			"import": "./src/middleware/hono.ts",
+			"types": "./src/middleware/hono.ts"
 		}
 	},
 	"scripts": {
 		"build": "bun build ./src/index.ts ./src/middleware/hono.ts --outdir ./dist --target node --format esm && tsc --emitDeclarationOnly",
-		"prepare": "bun run build",
+		"prepare": "echo 'skipping build — bun imports .ts directly'",
 		"test": "bun test",
 		"check": "biome check .",
 		"check:fix": "biome check --write ."
