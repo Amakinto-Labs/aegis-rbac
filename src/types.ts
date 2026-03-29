@@ -47,6 +47,12 @@ export interface RBACConfig<TRole extends string = string> {
 	hierarchy?: TRole[];
 	/** Optional super admin role that bypasses all permission checks */
 	superAdmin?: TRole;
+	/**
+	 * Optional action levels ordered lowest to highest.
+	 * Each level implies all levels below it on the same resource.
+	 * Example: ["read", "write", "delete"] — write implies read, delete implies both.
+	 */
+	actionLevels?: string[];
 }
 
 /** Parsed permission split into resource and action */

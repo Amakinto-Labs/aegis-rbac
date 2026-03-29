@@ -198,7 +198,7 @@ export function analyzePermission<TRole extends string>(
 
 	const denyPermissions = collectDenyPermissions(config, role);
 	const deniedBy = denyPermissions.find((denyPermission) =>
-		permissionMatches(denyPermission, permission),
+		permissionMatches(denyPermission, permission, config.actionLevels),
 	);
 	if (deniedBy) {
 		return {
@@ -212,7 +212,7 @@ export function analyzePermission<TRole extends string>(
 
 	const grantedPermissions = collectPermissions(config, role);
 	const grantedBy = grantedPermissions.find((grantedPermission) =>
-		permissionMatches(grantedPermission, permission),
+		permissionMatches(grantedPermission, permission, config.actionLevels),
 	);
 	if (grantedBy) {
 		return {
@@ -228,10 +228,10 @@ export function analyzePermission<TRole extends string>(
 		allowed: false,
 		isSuperAdmin: false,
 		conditionalMatches: collectConditionalPermissions(config, role).filter((conditional) =>
-			permissionMatches(conditional.permission, permission),
+			permissionMatches(conditional.permission, permission, config.actionLevels),
 		),
 		fieldMatches: collectFieldPermissions(config, role).filter((fieldPermission) =>
-			permissionMatches(fieldPermission.permission, permission),
+			permissionMatches(fieldPermission.permission, permission, config.actionLevels),
 		),
 	};
 }
@@ -282,11 +282,20 @@ export function buildAbility<TRole extends string>(
 	} else {
 		const rules: RawRuleOf<MongoAbility<AbilityTuple>>[] = [];
 
-		// Standard permissions
+		// Standard permissions (with action level expansion)
 		const permissions = collectPermissions(config, role);
 		for (const p of permissions) {
 			const { action, subject } = parsePermission(p);
 			rules.push({ action, subject });
+			// Expand implied actions from actionLevels
+			if (config.actionLevels && action !== "manage") {
+				const levelIndex = config.actionLevels.indexOf(action);
+				if (levelIndex > 0) {
+					for (let i = 0; i < levelIndex; i++) {
+						rules.push({ action: config.actionLevels[i], subject });
+					}
+				}
+			}
 		}
 
 		// Conditional permissions — resolve {{placeholders}} against context.

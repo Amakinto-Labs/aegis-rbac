@@ -117,6 +117,7 @@ export function applyOverrides<TRole extends string>(
 		roles: newRoles,
 		...(baseConfig.hierarchy && { hierarchy: [...baseConfig.hierarchy] }),
 		...(baseConfig.superAdmin !== undefined && { superAdmin: baseConfig.superAdmin }),
+		...(baseConfig.actionLevels && { actionLevels: [...baseConfig.actionLevels] }),
 	};
 
 	// Validate the merged result
