@@ -2,6 +2,7 @@
 export { defineRoles } from "./define";
 export { applyOverrides } from "./override";
 export { defineDataScope, resolveScope } from "./scope";
+export { createConfigCache } from "./cache";
 
 // Core
 export { buildAbility } from "./ability";
@@ -34,3 +35,4 @@ export type {
 } from "./types";
 export type { PermissionsSummary } from "./check";
 export type { DebugTrace, DebugResult, DebugRoleResult } from "./debug";
+export type { ConfigCacheOptions, ConfigCache } from "./cache";
