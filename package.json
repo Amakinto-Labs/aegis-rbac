@@ -1,23 +1,28 @@
 {
-	"name": "aegis",
-	"version": "0.1.0",
-	"private": true,
+	"name": "@amakinto/aegis-rbac",
+	"version": "1.4.2",
 	"type": "module",
-	"main": "src/index.ts",
-	"types": "src/index.ts",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
 	"exports": {
 		".": {
-			"import": "./src/index.ts",
-			"types": "./src/index.ts"
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
 		},
 		"./middleware/hono": {
-			"import": "./src/middleware/hono.ts",
-			"types": "./src/middleware/hono.ts"
+			"import": "./dist/middleware/hono.js",
+			"types": "./dist/middleware/hono.d.ts"
 		}
 	},
+	"files": ["dist"],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Amakinto-Labs/aegis-rbac"
+	},
+	"license": "MIT",
 	"scripts": {
 		"build": "bun build ./src/index.ts ./src/middleware/hono.ts --outdir ./dist --target node --format esm && tsc --emitDeclarationOnly",
-		"prepare": "echo 'skipping build — bun imports .ts directly'",
+		"prepublishOnly": "bun run build",
 		"test": "bun test",
 		"check": "biome check .",
 		"check:fix": "biome check --write ."
