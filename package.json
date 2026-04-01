@@ -1,5 +1,5 @@
 {
-	"name": "@amakinto/aegis-rbac",
+	"name": "@amakinto-labs/aegis-rbac",
 	"version": "1.4.3",
 	"publishConfig": {
 		"registry": "https://npm.pkg.github.com"
